@@ -18,10 +18,15 @@ type APIProducer struct {
 
 func NewAPIProducer(apiURL, kafkaTopic, kafkaBroker string) (*APIProducer, error) {
 	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Producer.RequiredAcks = sarama.WaitForAll
+	config.Producer.Retry.Max = 5
+
 	producer, err := sarama.NewSyncProducer([]string{kafkaBroker}, config)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating Kafka producer: %v", err)
+		log.Fatal("Error creating Kafka producer:", err)
 	}
+
 	return &APIProducer{
 		apiURL:     apiURL,
 		producer:   producer,
