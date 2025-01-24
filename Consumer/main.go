@@ -1,57 +1,45 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
 	"github.com/IBM/sarama"
 )
 
+type consumer struct{}
+
+func (consumer *consumer) Setup(sarama.ConsumerGroupSession) error   { return nil }
+func (consumer *consumer) Cleanup(sarama.ConsumerGroupSession) error { return nil }
+func (consumer *consumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for message := range claim.Messages() {
+		fmt.Printf("Message received: %s\n", string(message.Value))
+		sess.MarkMessage(message, "")
+	}
+	return nil
+}
+
 func main() {
-	kafkaBroker := "localhost:9092" // Kafka broker address
-	topic := "api_data"             // Topic to consume from
-	group := "consumer-group-1"     // Consumer group name
+	brokers := []string{"localhost:9092"}
+	group := "example-group"
+	topics := []string{"api_data"}
 
 	config := sarama.NewConfig()
-	config.Consumer.Return.Errors = true
+	config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRoundRobin
+	config.Version = sarama.V2_8_0_0
 
-	// Create a new consumer group
-	consumerGroup, err := sarama.NewConsumerGroup([]string{kafkaBroker}, group, config)
+	consumerGroup, err := sarama.NewConsumerGroup(brokers, group, config)
 	if err != nil {
-		log.Fatal("Error creating consumer group:", err)
+		log.Fatalf("Error creating consumer group: %v", err)
 	}
 	defer consumerGroup.Close()
 
-	// Implement a consumer handler
-	handler := &ConsumerHandler{}
-
-	// Start consuming messages
+	ctx := context.Background()
 	for {
-		err := consumerGroup.Consume(nil, []string{topic}, handler)
+		err := consumerGroup.Consume(ctx, topics, &consumer{})
 		if err != nil {
-			log.Println("Error in consumer:", err)
+			log.Printf("Error in consumer group: %v", err)
 		}
 	}
-}
-
-// ConsumerHandler handles incoming Kafka messages
-type ConsumerHandler struct{}
-
-// Setup is run at the beginning of a new session, before ConsumeClaim
-func (h *ConsumerHandler) Setup(sarama.ConsumerGroupSession) error {
-	return nil
-}
-
-// Cleanup is run at the end of a session, once all ConsumeClaim goroutines have exited
-func (h *ConsumerHandler) Cleanup(sarama.ConsumerGroupSession) error {
-	return nil
-}
-
-// ConsumeClaim processes Kafka messages
-func (h *ConsumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	for message := range claim.Messages() {
-		fmt.Printf("Message received: %s\n", string(message.Value))
-		session.MarkMessage(message, "")
-	}
-	return nil
 }
